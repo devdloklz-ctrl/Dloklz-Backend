@@ -12,20 +12,18 @@ export const verifyWooWebhook = (req, res, next) => {
     return res.status(500).json({ message: "Webhook secret not configured" });
   }
 
-  const payload = req.rawBody || JSON.stringify(req.body);
+  const payload = req.rawBody;  // MUST be Buffer, not stringified
+
+  if (!payload) {
+    return res.status(400).json({ message: "Missing raw body for verification" });
+  }
 
   const hash = crypto
     .createHmac("sha256", secret)
-    .update(Buffer.from(payload, "utf8"))
+    .update(payload)
     .digest("base64");
 
-  const signatureBuffer = Buffer.from(signature);
-  const hashBuffer = Buffer.from(hash);
-
-  if (
-    signatureBuffer.length !== hashBuffer.length ||
-    !crypto.timingSafeEqual(signatureBuffer, hashBuffer)
-  ) {
+  if (hash !== signature) {
     return res.status(401).json({ message: "Invalid Woo signature" });
   }
 
