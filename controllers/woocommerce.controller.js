@@ -4,6 +4,7 @@ import {
   fetchAllProducts,
   fetchAllOrders,
 } from "../services/woocommerce.service.js";
+import { sendOrderConfirmationEmail } from "../services/email.service.js";
 // import { sendOrderEmail } from "../services/brevoEmail.service.js";
 // import { sendOrderSMS } from "../services/twilio.service.js";
 
@@ -200,8 +201,8 @@ export const handleNewOrderWebhook = async (req, res) => {
     );
 
     /* ---------- Notifications ---------- */
-    await sendOrderEmail(savedOrder);
-    await sendOrderSMS(savedOrder);
+    await sendOrderConfirmationEmail(savedOrder);
+    // await sendOrderSMS(savedOrder);
 
     res.status(200).json({ message: "Order webhook processed successfully" });
   } catch (error) {
