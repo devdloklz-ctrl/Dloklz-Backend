@@ -3,7 +3,7 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
-import {rawBodyParser} from "./middleware/rawBodyParser.js";
+import { rawBodyParser } from "./middleware/rawBodyParser.js";
 
 import authRoutes from "./routes/auth.routes.js";
 import productRoutes from "./routes/products.routes.js";
@@ -14,30 +14,36 @@ import wooRoutes from "./routes/woocommerce.routes.js";
 dotenv.config();
 const app = express();
 
-app.use(cors({
-  origin: "http://localhost:3000",
-  credentials: true,
-}));
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 
-app.use(rawBodyParser);
-// Skip JSON parsing for webhook route
+// Use rawBodyParser **only** for the webhook route to capture raw body for signature verification
 app.use((req, res, next) => {
-  if (req.originalUrl === "/api/webhooks/order-created") {
-    next();
-  } else {
-    express.json()(req, res, next);
+  if (req.originalUrl === "/api/webhooks/order-created" && req.method === "POST") {
+    return rawBodyParser(req, res, next);
   }
+  next();
 });
 
-// app.use(express.json());
+// Use JSON parser for all other routes EXCEPT the webhook POST route above
+app.use((req, res, next) => {
+  if (req.originalUrl === "/api/webhooks/order-created" && req.method === "POST") {
+    // skip json parser here because rawBodyParser already handled the body
+    return next();
+  }
+  express.json()(req, res, next);
+});
 
-// Routes
+// Register routes
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/woocommerce", wooRoutes);
-
 
 const PORT = process.env.PORT || 5000;
 
