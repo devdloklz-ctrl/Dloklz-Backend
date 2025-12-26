@@ -134,7 +134,11 @@ export const importWooData = async (req, res) => {
           date_completed: o.date_completed,
 
           meta_data: o.meta_data,
-          rawWooOrder: o,                 // 🔥 FULL RAW ORDER
+          rawWooOrder: {
+            id: o.id,
+            status: o.status,
+            date_modified: o.date_modified,
+          },                 // 🔥 FULL RAW ORDER
         },
         { upsert: true, new: true }
       );
@@ -240,7 +244,9 @@ export const handleNewOrderWebhook = async (req, res) => {
     );
 
     /* ---------------- SEND EMAIL ONLY ON FIRST CREATE ---------------- */
+    console.log("reached before email send function");
     if (!existingOrder) {
+      console.log("Accessing the email service");
       await sendOrderConfirmationEmail(savedOrder);
     }
 
@@ -262,7 +268,11 @@ export const handleNewOrderWebhook = async (req, res) => {
       status: "failed",
       signature,
       error: error.message,
-      payload: req.body,
+      payload: {
+        id: order.id,
+        status: order.status,
+        total: order.total,
+      },
     });
 
     /**

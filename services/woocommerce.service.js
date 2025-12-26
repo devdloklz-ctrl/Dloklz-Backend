@@ -29,14 +29,17 @@ export async function fetchAllProducts() {
 export async function fetchAllOrders() {
   let page = 1;
   let orders = [];
-  while (true) {
+  for (let page = 1; ; page++) {
     const res = await axios.get(`${baseUrl}/orders`, {
       auth,
-      params: { per_page: 100, page },
+      params: { per_page: 50, page },
     });
-    orders = orders.concat(res.data);
-    if (res.data.length < 100) break;
-    page++;
+
+    if (!res.data.length) break;
+
+    for (const o of res.data) {
+      await saveOrder(o);
+    }
   }
   return orders;
 }

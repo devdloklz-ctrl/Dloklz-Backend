@@ -58,6 +58,7 @@ async function sendEmail({ to, subject, html }) {
  * Order confirmed
  */
 export async function sendOrderConfirmationEmail(order) {
+  console.log("email name --- :  ", order.billing.first_name)
   const html = loadTemplate("order-confirmed.html", {
     customerName: order.billing.first_name,
     orderId: order.orderNumber,
