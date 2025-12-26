@@ -5,9 +5,7 @@ import {
   fetchAllOrders,
 } from "../services/woocommerce.service.js";
 import { sendOrderConfirmationEmail } from "../services/email.service.js";
-// import { sendOrderEmail } from "../services/brevoEmail.service.js";
-// import { sendOrderSMS } from "../services/twilio.service.js";
-
+import WebhookLog from "../models/WebhookLog.js";
 
 /* ---------------- HELPERS ---------------- */
 
@@ -157,10 +155,42 @@ export const importWooData = async (req, res) => {
 /* ---------------- WEBHOOK HANDLER ---------------- */
 
 export const handleNewOrderWebhook = async (req, res) => {
+  const signature = req.headers["x-wc-webhook-signature"];
+
   try {
     const order = req.body;
     const vendorId = getVendorIdFromMeta(order.meta_data);
 
+    if (!order?.id) {
+      await WebhookLog.create({
+        topic: "order.created",
+        status: "failed",
+        error: "Missing order id",
+        payload: order,
+      });
+
+      return res.status(200).json({ message: "Invalid payload ignored" });
+    }
+
+    const existingOrder = await Order.findOne({ wooOrderId: order.id });
+
+    /* ---------------- IDMPOTENCY CHECK ---------------- */
+    if (
+      existingOrder &&
+      existingOrder.lastWooModified &&
+      new Date(order.date_modified) <= existingOrder.lastWooModified
+    ) {
+      await WebhookLog.create({
+        topic: "order.created",
+        wooResourceId: order.id,
+        status: "ignored",
+        payload: order,
+      });
+
+      return res.status(200).json({ message: "Outdated webhook ignored" });
+    }
+
+    /* ---------------- UPSERT ORDER ---------------- */
     const savedOrder = await Order.findOneAndUpdate(
       { wooOrderId: order.id },
       {
@@ -194,20 +224,53 @@ export const handleNewOrderWebhook = async (req, res) => {
         store: order.store || null,
 
         date_created: order.date_created,
+        date_modified: order.date_modified,
+        lastWooModified: order.date_modified,
+
         meta_data: order.meta_data,
         rawWooOrder: order,
+
+        webhook: {
+          lastEvent: "order.created",
+          deliveryId: req.headers["x-wc-webhook-id"],
+          processedAt: new Date(),
+        },
       },
       { upsert: true, new: true }
     );
 
-    /* ---------- Notifications ---------- */
-    await sendOrderConfirmationEmail(savedOrder);
-    // await sendOrderSMS(savedOrder);
+    /* ---------------- SEND EMAIL ONLY ON FIRST CREATE ---------------- */
+    if (!existingOrder) {
+      await sendOrderConfirmationEmail(savedOrder);
+    }
 
-    res.status(200).json({ message: "Order webhook processed successfully" });
+    /* ---------------- LOG SUCCESS ---------------- */
+    await WebhookLog.create({
+      topic: "order.created",
+      wooResourceId: order.id,
+      signature,
+      status: "success",
+      payload: order,
+    });
+
+    return res.status(200).json({ message: "Webhook processed" });
   } catch (error) {
     console.error("Webhook error:", error);
-    res.status(500).json({ message: "Failed to process webhook" });
+
+    await WebhookLog.create({
+      topic: "order.created",
+      status: "failed",
+      signature,
+      error: error.message,
+      payload: req.body,
+    });
+
+    /**
+     * ⚠️ IMPORTANT:
+     * Return 200 so Woo doesn't retry forever
+     * You already logged the failure
+     */
+    return res.status(200).json({ message: "Webhook error logged" });
   }
 };
 

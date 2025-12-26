@@ -1,29 +1,33 @@
 import crypto from "crypto";
 
 export const verifyWooWebhook = (req, res, next) => {
+  const topic = req.headers["x-wc-webhook-topic"];
+
+  // ✅ Allow WooCommerce validation ping
+  if (!topic) {
+    return res.status(200).json({ ok: true });
+  }
+
   const signature = req.headers["x-wc-webhook-signature"];
   const secret = process.env.WOO_WEBHOOK_SECRET;
 
-  if (!signature) {
-    return res.status(401).json({ message: "Missing Woo signature" });
+  if (!signature || !secret) {
+    return res.status(401).json({ message: "Missing webhook signature" });
   }
 
-  if (!secret) {
-    return res.status(500).json({ message: "Webhook secret not configured" });
-  }
+  const rawBody = req.body; // ✅ THIS IS THE BUFFER
 
-  const payload = req.rawBody;
-
-  if (!payload) {
-    return res.status(400).json({ message: "Missing raw body for verification" });
-  }
-
-  const hash = crypto
+  const expectedSignature = crypto
     .createHmac("sha256", secret)
-    .update(payload)
+    .update(rawBody)
     .digest("base64");
 
-  if (hash !== signature) {
+  if (
+    !crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    )
+  ) {
     return res.status(401).json({ message: "Invalid Woo signature" });
   }
 

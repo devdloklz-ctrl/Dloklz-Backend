@@ -6,20 +6,17 @@ const router = express.Router();
 
 router.post(
   "/order-created",
-  // verifyWooWebhook,   ❌ comment temporarily
-  (req, res) => {
-    console.log("🔥 WEBHOOK HIT 🔥");
-    console.log("Headers:", req.headers);
-    console.log("RawBody:", req.rawBody);
-    console.log("Body:", req.body);
-
-    res.status(200).json({ ok: true });
-  }
+  verifyWooWebhook,
+  (req, res, next) => {
+    // Convert raw buffer to JSON
+    try {
+      req.body = JSON.parse(req.body.toString("utf8"));
+      next();
+    } catch (err) {
+      return res.status(400).json({ message: "Invalid JSON body" });
+    }
+  },
+  handleNewOrderWebhook
 );
-
-router.get("/woocommerce", (req, res) => {
-  console.log("⚠️ WooCommerce sent a GET to webhook URL (likely test validation)");
-  res.status(200).json({ message: "WooCommerce Webhook endpoint active ✅" });
-});
 
 export default router;

@@ -17,7 +17,7 @@ const addressSchema = new mongoose.Schema({
 });
 
 const lineItemSchema = new mongoose.Schema({
-  wooLineItemId: Number,
+  wooLineItemId: {type: Number, index: true,},
   productId: Number,
   variationId: Number,
   name: String,
@@ -37,7 +37,7 @@ const lineItemSchema = new mongoose.Schema({
 const orderSchema = new mongoose.Schema(
   {
     /* Woo identifiers */
-    wooOrderId: { type: Number, unique: true },
+    wooOrderId: { type: Number, unique: true, required: true, index: true, },
     orderNumber: String,
 
     /* Status & totals */
@@ -46,10 +46,12 @@ const orderSchema = new mongoose.Schema(
       enum: [
         "pending",
         "processing",
+        "on-hold",
         "completed",
         "cancelled",
         "refunded",
         "failed",
+        "trash",
       ],
     },
     currency: String,
