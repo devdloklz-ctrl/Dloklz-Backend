@@ -12,7 +12,7 @@ export const verifyWooWebhook = (req, res, next) => {
     return res.status(500).json({ message: "Webhook secret not configured" });
   }
 
-  const payload = req.rawBody;  // MUST be Buffer, not stringified
+  const payload = req.rawBody;
 
   if (!payload) {
     return res.status(400).json({ message: "Missing raw body for verification" });

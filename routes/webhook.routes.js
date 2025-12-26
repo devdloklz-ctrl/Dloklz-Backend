@@ -10,4 +10,9 @@ router.post(
   handleNewOrderWebhook  // 🔥 NO AUTH TOKEN HERE
 );
 
+router.get("/woocommerce", (req, res) => {
+  console.log("⚠️ WooCommerce sent a GET to webhook URL (likely test validation)");
+  res.status(200).json({ message: "WooCommerce Webhook endpoint active ✅" });
+});
+
 export default router;
