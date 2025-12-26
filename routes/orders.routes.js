@@ -1,17 +1,38 @@
 import express from "express";
-import Order from "../models/Order.js";
+import {
+  getOrders,
+  getOrderById,
+  updateOrderStatus,
+} from "../controllers/order.controller.js";
 import { verifyToken } from "../middleware/auth.middleware.js";
 import { hasRole } from "../middleware/role.middleware.js";
 
 const router = express.Router();
 
-router.get("/", verifyToken, hasRole(["owner", "vendor"]), async (req, res) => {
-  try {
-    const orders = await Order.find();
-    res.json(orders);
-  } catch (err) {
-    res.status(500).json({ message: "Failed to fetch orders" });
-  }
-});
+/**
+ * GET /api/orders
+ * List orders
+ * Roles: owner, vendor
+ */
+router.get("/", verifyToken, hasRole(["owner", "vendor"]), getOrders);
+
+/**
+ * GET /api/orders/:id
+ * Get order details
+ * Roles: owner, vendor
+ */
+router.get("/:id", verifyToken, hasRole(["owner", "vendor"]), getOrderById);
+
+/**
+ * PATCH /api/orders/:id/status
+ * Update order status and/or payment status
+ * Roles: owner (paymentStatus + orderStatus), vendor (orderStatus only)
+ */
+router.patch(
+  "/:id/status",
+  verifyToken,
+  hasRole(["owner", "vendor"]),
+  updateOrderStatus
+);
 
 export default router;
