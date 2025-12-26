@@ -3,6 +3,8 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 
+import {rawBodyParser} from "./middleware/rawBodyParser.js";
+
 import authRoutes from "./routes/auth.routes.js";
 import productRoutes from "./routes/products.routes.js";
 import orderRoutes from "./routes/orders.routes.js";
@@ -16,6 +18,17 @@ app.use(cors({
   origin: "http://localhost:3000",
   credentials: true,
 }));
+
+app.use(rawBodyParser);
+// Skip JSON parsing for webhook route
+app.use((req, res, next) => {
+  if (req.originalUrl === "/api/webhooks/order-created") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
 app.use(express.json());
 
 // Routes
