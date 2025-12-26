@@ -6,8 +6,15 @@ const router = express.Router();
 
 router.post(
   "/order-created",
-  verifyWooWebhook,      // 🔥 FIRST
-  handleNewOrderWebhook  // 🔥 NO AUTH TOKEN HERE
+  // verifyWooWebhook,   ❌ comment temporarily
+  (req, res) => {
+    console.log("🔥 WEBHOOK HIT 🔥");
+    console.log("Headers:", req.headers);
+    console.log("RawBody:", req.rawBody);
+    console.log("Body:", req.body);
+
+    res.status(200).json({ ok: true });
+  }
 );
 
 router.get("/woocommerce", (req, res) => {
