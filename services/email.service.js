@@ -2,17 +2,14 @@ import fs from "fs";
 import path from "path";
 import axios from "axios";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
+dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const { BREVO_API_KEY, EMAIL_FROM } = process.env;
 const BREVO_API_URL = "https://api.brevo.com/v3/smtp/email";
-
-const SENDER = {
-  name: "Dloklz",
-  email: "no-reply@dloklz.com",
-};
 
 /**
  * Load HTML template & replace variables
@@ -40,7 +37,7 @@ async function sendEmail({ to, subject, html }) {
   return axios.post(
     BREVO_API_URL,
     {
-      sender: SENDER,
+      sender: {email: EMAIL_FROM, name: "Dloklz"},
       to: [{ email: to }],
       subject,
       htmlContent: html,
