@@ -1,5 +1,7 @@
 import Product from "../models/Product.js";
 import Order from "../models/Order.js";
+import Vendor from "../models/Vendor.js";
+
 import {
   fetchAllProducts,
   fetchAllOrders,
@@ -244,10 +246,40 @@ export const handleNewOrderWebhook = async (req, res) => {
     );
 
     /* ---------------- SEND EMAIL ONLY ON FIRST CREATE ---------------- */
-    console.log("reached before email send function");
     if (!existingOrder) {
-      console.log("Accessing the email service");
       await sendOrderConfirmationEmail(savedOrder);
+      await sendSMS(
+        savedOrder.billing.phone,
+        `Thank you for your order #${savedOrder.orderNumber}! We are processing it and will update you soon.`
+      );
+
+      // Owner SMS (assuming owner phone in env)
+      const ownerPhone = process.env.OWNER_PHONE;
+      if (ownerPhone) {
+        const ownerMsg = `📦 Order #${savedOrder.orderNumber} has been placed. Total: ₹${savedOrder.total}.`;
+        try {
+          await sendSMS(ownerPhone, ownerMsg);
+          console.log(`📩 SMS sent to Owner (${ownerPhone})`);
+        } catch (err) {
+          console.error(`❌ Failed to send owner SMS:`, err.message);
+        }
+      }
+
+      // Vendor SMS (if vendorId present)
+      if (savedOrder.vendorId) {
+        try {
+          const vendor = await Vendor.findById(savedOrder.vendorId);
+          if (vendor?.phone) {
+            const vendorMsg = `🛍️ New order #${savedOrder.orderNumber} received from customer ${savedOrder.billing.first_name}. Please take action accordingly.`;
+            await sendSMS(vendor.phone, vendorMsg);
+            console.log(`📩 SMS sent to Vendor (${vendor.phone})`);
+          } else {
+            console.warn(`⚠️ Vendor phone not found for vendorId: ${savedOrder.vendorId}`);
+          }
+        } catch (err) {
+          console.error(`❌ Error sending SMS to Vendor (ID: ${savedOrder.vendorId}):`, err.message);
+        }
+      }
     }
 
     /* ---------------- LOG SUCCESS ---------------- */

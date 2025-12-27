@@ -8,6 +8,8 @@ import productRoutes from "./routes/products.routes.js";
 import orderRoutes from "./routes/orders.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 import wooRoutes from "./routes/woocommerce.routes.js";
+import vendorRoutes from "./routes/vendor.routes.js";
+import userRoutes from "./routes/user.routes.js";
 
 dotenv.config();
 const app = express();
@@ -35,6 +37,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/woocommerce", wooRoutes);
+app.use("/api/vendors", vendorRoutes);
+app.use("/api/users", userRoutes);
 
 const PORT = process.env.PORT || 5000;
 

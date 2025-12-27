@@ -1,4 +1,5 @@
 import Order from "../models/Order.js";
+import { sendSMS } from "../services/sms.service.js";
 import {
   sendOrderConfirmationEmail,
   sendOrderShippedEmail,
@@ -99,22 +100,20 @@ export const updateOrderStatus = async (req, res) => {
 
     // Payment status protection
     if (typeof needs_payment !== "undefined" && user.role !== "owner") {
-      return res
-        .status(403)
-        .json({ message: "Only owner can update payment status" });
+      return res.status(403).json({ message: "Only owner can update payment status" });
     }
 
     // Apply updates
     if (newStatus) order.status = newStatus;
-    if (typeof needs_payment !== "undefined")
-      order.needs_payment = needs_payment;
+    if (typeof needs_payment !== "undefined") order.needs_payment = needs_payment;
 
     await order.save();
 
     /**
-     * EMAIL TRIGGERS (ONLY on status change)
+     * EMAIL + SMS TRIGGERS (ONLY on status change)
      */
     if (newStatus && previousStatus !== newStatus) {
+      // Email notifications
       switch (newStatus) {
         case "processing":
           await sendOrderConfirmationEmail(order);
@@ -134,6 +133,41 @@ export const updateOrderStatus = async (req, res) => {
 
         default:
           break;
+      }
+
+      // SMS notifications
+      const customerPhone = order.billing.phone;
+      const customerName = order.billing.first_name || "Customer";
+      const orderId = order.orderNumber || order._id.toString();
+      const orderTotal = order.total;
+
+      // Customer SMS
+      if (customerPhone) {
+        let smsText = "";
+        switch (newStatus) {
+          case "processing":
+            smsText = `Hi ${customerName}, your order #${orderId} is now being processed. Thank you for shopping with us!`;
+            break;
+          case "shipped":
+            smsText = `Hi ${customerName}, your order #${orderId} has been shipped. You can expect delivery soon.`;
+            break;
+          case "completed":
+            smsText = `Hi ${customerName}, your order #${orderId} has been delivered. We hope you enjoy your purchase!`;
+            break;
+          case "cancelled":
+            smsText = `Hi ${customerName}, your order #${orderId} has been cancelled. If you have questions, please contact support.`;
+            break;
+          default:
+            smsText = `Hi ${customerName}, the status of your order #${orderId} has been updated to ${newStatus}.`;
+            break;
+        }
+
+        try {
+          await sendSMS(customerPhone, smsText);
+          console.log(`📩 SMS sent to Customer (${customerPhone})`);
+        } catch (err) {
+          console.error(`❌ Failed to send customer SMS:`, err.message);
+        }
       }
     }
 

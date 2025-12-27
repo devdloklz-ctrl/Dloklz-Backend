@@ -8,32 +8,35 @@ const JWT_SECRET = process.env.JWT_SECRET || "secretkey";
 // Register new user
 export const register = async (req, res) => {
   try {
-    const { username, email, password, roles } = req.body;
+    const { username, identifier, password, roles } = req.body;
 
-    // Check if user exists
-    const existingUser = await User.findOne({ email });
+    if (!identifier)
+      return res.status(400).json({ message: "Email or phone is required" });
+
+    const isEmail = identifier.includes("@");
+
+    const existingUser = await User.findOne(
+      isEmail ? { email: identifier } : { phone: identifier }
+    );
+
     if (existingUser)
-      return res.status(400).json({ message: "Email already in use" });
+      return res.status(400).json({ message: "User already exists" });
 
-    // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Find roles
     let roleDocs;
-    if (roles && roles.length > 0) {
+    if (roles?.length) {
       roleDocs = await Role.find({ name: { $in: roles } });
     } else {
-      // Default role vendor
-      const vendorRole = await Role.findOne({ name: "vendor" });
-      roleDocs = [vendorRole];
+      roleDocs = [await Role.findOne({ name: "vendor" })];
     }
 
-    // Create user
     const user = new User({
       username,
-      email,
+      email: isEmail ? identifier : undefined,
+      phone: !isEmail ? identifier : undefined,
       password: hashedPassword,
-      roles: roleDocs.map((r) => r._id),
+      roles: roleDocs.map(r => r._id),
     });
 
     await user.save();
@@ -48,25 +51,38 @@ export const register = async (req, res) => {
 // Login user
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { identifier, password } = req.body;
 
-    // Find user
-    const user = await User.findOne({ email }).populate("roles");
-    if (!user) return res.status(400).json({ message: "Invalid credentials" });
+    const isEmail = identifier.includes("@");
 
-    // Check password
+    const user = await User.findOne(
+      isEmail ? { email: identifier } : { phone: identifier }
+    ).populate("roles");
+
+    if (!user)
+      return res.status(400).json({ message: "Invalid credentials" });
+
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return res.status(400).json({ message: "Invalid credentials" });
+    if (!isMatch)
+      return res.status(400).json({ message: "Invalid credentials" });
 
-    // Create JWT payload
     const payload = {
       id: user._id,
-      roles: user.roles.map((r) => r.name),
+      roles: user.roles.map(r => r.name),
     };
 
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });
 
-    res.json({ token, user: { id: user._id, username: user.username, email: user.email, roles: payload.roles } });
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone,
+        roles: payload.roles,
+      },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error" });

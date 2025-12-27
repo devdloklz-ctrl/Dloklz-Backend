@@ -1,46 +1,42 @@
+// utils/smsService.js
 import twilio from "twilio";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID;
-const authToken = process.env.TWILIO_AUTH_TOKEN;
-const client = twilio(accountSid, authToken);
+const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 
-export async function sendOrderSMS(order, templateType = "order_placed") {
+/**
+ * Send SMS via Twilio
+ * @param {string} phone - Recipient phone number (e.g., +919876543210 or 9876543210)
+ * @param {string} message - SMS content
+ * @returns {Promise<{ok: boolean, sid?: string, error?: string}>}
+ */
+export const sendSMS = async (phone, message) => {
   try {
-    const customerPhone = order.billing.phone;
-
-    if (!customerPhone) {
-      console.log("No phone number for order, skipping SMS");
-      return;
+    if (!phone) {
+      console.warn("⚠️ No phone number provided for SMS");
+      return { ok: false, error: "Missing phone number" };
     }
 
-    const orderNumber = order.orderNumber || order.wooOrderId;
+    const formattedPhone = phone.startsWith("+") ? phone : `+91${phone.trim()}`;
 
-    let message = "";
-
-    switch (templateType) {
-      case "order_status_update":
-        message = `Your order #${orderNumber} status has been updated to ${order.status}.`;
-        break;
-      case "payment_status_update":
-        message = `Payment status for your order #${orderNumber} is now ${order.needs_payment ? "Pending" : "Completed"}.`;
-        break;
-      case "order_delivered":
-        message = `Your order #${orderNumber} has been delivered. Thank you!`;
-        break;
-      default:
-        message = `Thank you for your order #${orderNumber}. We are processing it.`;
-    }
-
-    const sms = await client.messages.create({
+    const params = {
       body: message,
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to: customerPhone,
-    });
+      to: formattedPhone,
+    };
 
-    console.log("SMS sent:", sms.sid);
-    return sms;
+    if (process.env.TWILIO_MESSAGING_SERVICE_SID) {
+      params.messagingServiceSid = process.env.TWILIO_MESSAGING_SERVICE_SID;
+    } else if (process.env.TWILIO_SMS_NUMBER) {
+      params.from = process.env.TWILIO_SMS_NUMBER;
+    } else {
+      throw new Error("Missing Twilio 'from' configuration");
+    }
+
+    const response = await client.messages.create(params);
+    console.log(`📩 SMS sent successfully to ${formattedPhone} (SID: ${response.sid})`);
+
+    return { ok: true, sid: response.sid };
   } catch (error) {
-    console.error("SMS sending error:", error);
-    throw error;
+    console.error(`❌ SMS send error:`, error.message);
+    return { ok: false, error: error.message };
   }
-}
+};
