@@ -17,7 +17,8 @@ dotenv.config();
 const app = express();
 
 app.use(cors({
-  origin: "http://localhost:3000",
+  // origin: "http://localhost:3000",
+  origin: "https://dloklz-frontend.vercel.app",
   credentials: true,
 }));
 
