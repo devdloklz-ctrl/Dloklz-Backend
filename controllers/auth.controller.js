@@ -2,13 +2,14 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import Role from "../models/Role.js";
+import Vendor from "../models/Vendor.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "secretkey";
 
 // Register new user
 export const register = async (req, res) => {
   try {
-    const { username, identifier, password, roles } = req.body;
+    const { username, identifier, password, roles, vendorId } = req.body;
 
     if (!identifier)
       return res.status(400).json({ message: "Email or phone is required" });
@@ -31,12 +32,36 @@ export const register = async (req, res) => {
       roleDocs = [await Role.findOne({ name: "vendor" })];
     }
 
+    let numericVendorId = null;
+
+    if (roles?.includes("vendor")) {
+      if (!vendorId) {
+        return res.status(400).json({
+          message: "vendorId is required for vendor users",
+        });
+      }
+
+      numericVendorId = Number(vendorId);
+      if (isNaN(numericVendorId)) {
+        return res.status(400).json({
+          message: "vendorId must be a number (Woo/Dokan vendor id)",
+        });
+      }
+
+      // extra safety: ensure vendor exists
+      const vendorExists = await Vendor.findOne({ id: numericVendorId });
+      if (!vendorExists) {
+        return res.status(404).json({ message: "Vendor not found" });
+      }
+    }
+
     const user = new User({
       username,
       email: isEmail ? identifier : undefined,
       phone: !isEmail ? identifier : undefined,
       password: hashedPassword,
       roles: roleDocs.map(r => r._id),
+      vendorId: numericVendorId, // ✅ ALWAYS number or null
     });
 
     await user.save();
@@ -69,6 +94,7 @@ export const login = async (req, res) => {
     const payload = {
       id: user._id,
       roles: user.roles.map(r => r.name),
+      vendorId: user.vendorId || null,
     };
 
     const token = jwt.sign(payload, JWT_SECRET, { expiresIn: "1d" });

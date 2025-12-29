@@ -1,7 +1,10 @@
 // utils/smsService.js
 import twilio from "twilio";
+import dotenv from "dotenv";
 
-const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
+dotenv.config();
+
+const client = twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN);
 
 /**
  * Send SMS via Twilio
@@ -32,7 +35,6 @@ export const sendSMS = async (phone, message) => {
     }
 
     const response = await client.messages.create(params);
-    console.log(`📩 SMS sent successfully to ${formattedPhone} (SID: ${response.sid})`);
 
     return { ok: true, sid: response.sid };
   } catch (error) {

@@ -1,6 +1,7 @@
 import express from "express";
 import { verifyWooWebhook } from "../middleware/verifyWooWebhook.js";
 import { handleNewOrderWebhook } from "../controllers/woocommerce.controller.js";
+import { delhiveryWebhook } from "../controllers/delhiveryWebhook.controller.js";
 
 const router = express.Router();
 
@@ -18,5 +19,7 @@ router.post(
   },
   handleNewOrderWebhook
 );
+
+router.post("/delhivery", express.json(), delhiveryWebhook);
 
 export default router;

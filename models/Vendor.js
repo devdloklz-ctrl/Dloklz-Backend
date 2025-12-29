@@ -46,6 +46,11 @@ const VendorSchema = new mongoose.Schema(
     bank_name: String,
     bank_iban: String,
 
+    delhivery: {
+      warehouseId: String, // optional (if returned)
+      lastSyncedAt: Date,
+    },
+
     synced_from_woo: { type: Boolean, default: false }, // 👈 important
   },
   { timestamps: true }

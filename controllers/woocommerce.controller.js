@@ -7,6 +7,7 @@ import {
   fetchAllOrders,
 } from "../services/woocommerce.service.js";
 import { sendOrderConfirmationEmail } from "../services/email.service.js";
+import { sendSMS } from "../services/sms.service.js";
 import WebhookLog from "../models/WebhookLog.js";
 
 /* ---------------- HELPERS ---------------- */
@@ -213,6 +214,9 @@ export const handleNewOrderWebhook = async (req, res) => {
         payment_method: order.payment_method,
         payment_method_title: order.payment_method_title,
 
+        needs_payment: order.needs_payment,
+        needs_processing: order.needs_processing,
+
         line_items: order.line_items.map((item) => ({
           wooLineItemId: item.id,
           productId: item.product_id,
@@ -254,7 +258,7 @@ export const handleNewOrderWebhook = async (req, res) => {
       );
 
       // Owner SMS (assuming owner phone in env)
-      const ownerPhone = process.env.OWNER_PHONE;
+      const ownerPhone = process.env.OWNER_PHONE_NUMBER;
       if (ownerPhone) {
         const ownerMsg = `📦 Order #${savedOrder.orderNumber} has been placed. Total: ₹${savedOrder.total}.`;
         try {
@@ -265,6 +269,7 @@ export const handleNewOrderWebhook = async (req, res) => {
         }
       }
 
+      console.log(`SMS sent to vendor (${savedOrder.vendorId})`);
       // Vendor SMS (if vendorId present)
       if (savedOrder.vendorId) {
         try {

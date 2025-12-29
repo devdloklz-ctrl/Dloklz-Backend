@@ -1,11 +1,13 @@
 import Order from "../models/Order.js";
 import { sendSMS } from "../services/sms.service.js";
+import { cancelDelhiveryShipment, createDelhiveryShipment } from "../services/delhivery.service.js";
 import {
   sendOrderConfirmationEmail,
   sendOrderShippedEmail,
   sendOrderDeliveredEmail,
   sendOrderCancelledEmail,
 } from "../services/email.service.js";
+import PickupLocation from "../models/PickupLocation.js";
 
 /**
  * GET /api/orders
@@ -26,6 +28,7 @@ export const getOrders = async (req, res) => {
 
     const filters = {};
 
+    // Search
     if (search) {
       filters.$or = [
         { orderNumber: { $regex: search, $options: "i" } },
@@ -36,13 +39,26 @@ export const getOrders = async (req, res) => {
       ];
     }
 
+    // Status
     if (status) filters.status = status;
 
+    // Payment
     if (payment_status) {
       filters.needs_payment = payment_status === "pending";
     }
 
-    if (vendorId) filters.vendorId = Number(vendorId);
+    // 🔐 Vendor isolation
+    if (req.user.roles.includes("vendor")) {
+      filters.vendorId = req.user.vendorId;
+    }
+
+    // Owner filter
+    if (
+      req.user.roles.includes("owner") &&
+      vendorId
+    ) {
+      filters.vendorId = Number(vendorId);
+    }
 
     const sortOptions = {
       [sortBy]: sortOrder === "asc" ? 1 : -1,
@@ -51,7 +67,9 @@ export const getOrders = async (req, res) => {
     const skip = (page - 1) * limit;
 
     const total = await Order.countDocuments(filters);
+
     const orders = await Order.find(filters)
+      .select('orderNumber billing line_items status total date_created needs_payment vendorId') // 👈 ONLY fetch what the table needs
       .sort(sortOptions)
       .skip(skip)
       .limit(Number(limit))
@@ -75,9 +93,24 @@ export const getOrders = async (req, res) => {
 export const getOrderById = async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).lean();
-    if (!order) return res.status(404).json({ message: "Order not found" });
+
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
+
+    // 🔐 Vendor access restriction
+    if (
+      req.user.roles.includes("vendor") &&
+      order.vendorId !== req.user.vendorId
+    ) {
+      return res.status(403).json({
+        message: "You are not allowed to view this order",
+      });
+    }
+
     res.json(order);
   } catch (error) {
+    console.error("Get order by ID error:", error);
     res.status(500).json({ message: "Failed to fetch order" });
   }
 };
@@ -89,34 +122,82 @@ export const getOrderById = async (req, res) => {
  */
 export const updateOrderStatus = async (req, res) => {
   try {
-    const { user } = req;
-    const { id } = req.params;
-    const { status: newStatus, needs_payment } = req.body;
+    const orderId = req.params.id;
+    const { status: newStatus } = req.body;
 
-    const order = await Order.findById(id);
-    if (!order) return res.status(404).json({ message: "Order not found" });
+    const order = await Order.findById(orderId);
+    if (!order) {
+      return res.status(404).json({ message: "Order not found" });
+    }
 
     const previousStatus = order.status;
 
-    // Payment status protection
-    if (typeof needs_payment !== "undefined" && user.role !== "owner") {
-      return res.status(403).json({ message: "Only owner can update payment status" });
+    /**
+     * 🚚 SHIPMENT CREATION (only when moving to shipped)
+     */
+    if (newStatus === "shipped" && previousStatus !== "shipped" && !order.shipment?.waybills?.length) {
+      const pickupLocation = await PickupLocation.findOne({
+        vendorId: order.vendorId,
+        isActive: true,
+      }).sort({ createdAt: -1 });
+
+      if (!pickupLocation) {
+        return res.status(400).json({
+          message: "No active pickup location found for this vendor",
+        });
+      }
+
+      const shipmentResp = await createDelhiveryShipment(order, pickupLocation);
+
+      if (!shipmentResp?.success) {
+        return res.status(400).json({
+          message: "Shipment creation failed",
+          error: shipmentResp,
+        });
+      }
+
+      order.pickupLocation = {
+        id: pickupLocation._id,
+        code: pickupLocation.code,
+      };
+
+      order.shipment = {
+        provider: "delhivery",
+        pickupCode: pickupLocation.code.toUpperCase(),
+        waybills: shipmentResp.waybills,
+        status: "manifested",
+        manifestedAt: new Date(),
+        rawResponse: shipmentResp,
+      };
     }
 
-    // Apply updates
-    if (newStatus) order.status = newStatus;
-    if (typeof needs_payment !== "undefined") order.needs_payment = needs_payment;
-
+    order.status = newStatus;
     await order.save();
 
+    if (
+      newStatus === "cancelled" &&
+      order.shipment &&
+      ["pending", "manifested", "in_transit"].includes(order.shipment.status)
+    ) {
+      await cancelDelhiveryShipment(order.shipment.waybills[0]);
+
+      order.shipment.status = "cancelled";
+      order.shipment.cancelledAt = new Date();
+    }
+
+
     /**
-     * EMAIL + SMS TRIGGERS (ONLY on status change)
+     * 📧 EMAIL + 📩 SMS (only if status changed)
      */
-    if (newStatus && previousStatus !== newStatus) {
-      // Email notifications
+    if (previousStatus !== newStatus) {
+      // EMAILS
       switch (newStatus) {
         case "processing":
           await sendOrderConfirmationEmail(order);
+          break;
+
+        case "shipped":
+          await sendOrderShippedEmail(order);
           break;
 
         case "completed":
@@ -127,46 +208,48 @@ export const updateOrderStatus = async (req, res) => {
           await sendOrderCancelledEmail(order);
           break;
 
-        case "shipped":
-          await sendOrderShippedEmail(order);
-          break;
-
         default:
           break;
       }
 
-      // SMS notifications
-      const customerPhone = order.billing.phone;
-      const customerName = order.billing.first_name || "Customer";
-      const orderId = order.orderNumber || order._id.toString();
+      // SMS
+      const customerPhone = order.billing?.phone;
+      const customerName = order.billing?.first_name || "Customer";
+      const orderRef = order.orderNumber || order._id.toString();
       const orderTotal = order.total;
 
-      // Customer SMS
       if (customerPhone) {
         let smsText = "";
+
         switch (newStatus) {
           case "processing":
-            smsText = `Hi ${customerName}, your order #${orderId} is now being processed. Thank you for shopping with us!`;
+            smsText = `Hi ${customerName}, your order #${orderRef} is now being processed.`;
             break;
+            
           case "shipped":
-            smsText = `Hi ${customerName}, your order #${orderId} has been shipped. You can expect delivery soon.`;
+            const waybill = order.shipment?.waybills?.[0];
+            const trackUrl = waybill
+              ? `https://www.delhivery.com/track/package/${waybill}`
+              : "";
+
+            smsText = `Hi ${customerName}, your order #${orderRef} has been shipped.${trackUrl ? ` Track here: ${trackUrl}` : ""
+              }`;
             break;
+
           case "completed":
-            smsText = `Hi ${customerName}, your order #${orderId} has been delivered. We hope you enjoy your purchase!`;
+            smsText = `Hi ${customerName}, your order #${orderRef} has been delivered.`;
             break;
           case "cancelled":
-            smsText = `Hi ${customerName}, your order #${orderId} has been cancelled. If you have questions, please contact support.`;
+            smsText = `Hi ${customerName}, your order #${orderRef} has been cancelled.`;
             break;
           default:
-            smsText = `Hi ${customerName}, the status of your order #${orderId} has been updated to ${newStatus}.`;
-            break;
+            smsText = `Hi ${customerName}, your order #${orderRef} status is now ${newStatus}.`;
         }
 
         try {
           await sendSMS(customerPhone, smsText);
-          console.log(`📩 SMS sent to Customer (${customerPhone})`);
         } catch (err) {
-          console.error(`❌ Failed to send customer SMS:`, err.message);
+          console.error("❌ SMS failed:", err.message);
         }
       }
     }
@@ -175,8 +258,8 @@ export const updateOrderStatus = async (req, res) => {
       message: "Order updated successfully",
       order,
     });
-  } catch (error) {
-    console.error("Update order status error:", error);
-    res.status(500).json({ message: "Failed to update order" });
+  } catch (err) {
+    console.error("Update order error:", err);
+    res.status(500).json({ message: "Failed to update order status" });
   }
 };

@@ -10,6 +10,8 @@ import webhookRoutes from "./routes/webhook.routes.js";
 import wooRoutes from "./routes/woocommerce.routes.js";
 import vendorRoutes from "./routes/vendor.routes.js";
 import userRoutes from "./routes/user.routes.js";
+import dashboardRoutes from "./routes/dashboard.routes.js";
+import "./cron/delhiveryStatus.cron.js";
 
 dotenv.config();
 const app = express();
@@ -39,6 +41,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/woocommerce", wooRoutes);
 app.use("/api/vendors", vendorRoutes);
 app.use("/api/users", userRoutes);
+app.use("/api/dashboard", dashboardRoutes);
 
 const PORT = process.env.PORT || 5000;
 

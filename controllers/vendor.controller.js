@@ -65,7 +65,12 @@ export const getVendors = async (req, res) => {
 };
 
 export const getVendor = async (req, res) => {
-  const vendor = await Vendor.findOne({ id: req.params.id });
+  const id = Number(req.params.id);
+  if (isNaN(id)) {
+    return res.status(400).json({ message: "Invalid vendor id" });
+  }
+  const vendor = await Vendor.findOne({ id });
+
   if (!vendor) return res.status(404).json({ error: "Vendor not found" });
   res.json(vendor);
 };
@@ -85,32 +90,40 @@ export const deleteVendor = async (req, res) => {
   res.json({ message: "Vendor deleted" });
 };
 
-
 export const registerVendorAccess = async (req, res) => {
   const { vendorId, password } = req.body;
 
-  const vendor = await Vendor.findOne({ id: vendorId });
+  // ensure number
+  const numericVendorId = Number(vendorId);
+  if (isNaN(numericVendorId)) {
+    return res.status(400).json({ error: "Invalid vendorId" });
+  }
+
+  const vendor = await Vendor.findOne({ id: numericVendorId });
   if (!vendor) {
     return res.status(404).json({ error: "Vendor not found" });
   }
 
-  const existingUser = await User.findOne({ email: vendor.email });
+  const existingUser = await User.findOne({ vendorId: numericVendorId });
   if (existingUser) {
-    return res.status(400).json({ error: "User already registered" });
+    return res.status(400).json({ error: "Vendor user already exists" });
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
+  const vendorRole = await Role.findOne({ name: "vendor" });
+
   const user = await User.create({
-    name: vendor.store_name,
+    username: vendor.store_name,
     email: vendor.email,
+    phone: vendor.phone,
     password: hashedPassword,
-    role: "vendor",
-    vendorId: vendor.id,
+    vendorId: numericVendorId,   // ✅ ALWAYS NUMBER
+    roles: [vendorRole._id],
   });
 
   res.json({
-    message: "Vendor access created",
+    message: "Vendor login created",
     userId: user._id,
   });
 };

@@ -14,19 +14,34 @@ const router = express.Router();
  * List orders
  * Roles: owner, vendor
  */
-router.get("/", verifyToken, hasRole(["owner", "vendor"]), getOrders);
+router.get(
+  "/",
+  verifyToken,
+  hasRole(["owner", "vendor"]),
+  getOrders
+);
 
 /**
  * GET /api/orders/:id
  * Get order details
  * Roles: owner, vendor
  */
-router.get("/:id", verifyToken, hasRole(["owner", "vendor"]), getOrderById);
+router.get(
+  "/:id",
+  verifyToken,
+  hasRole(["owner", "vendor"]),
+  getOrderById
+);
 
 /**
  * PATCH /api/orders/:id/status
- * Update order status and/or payment status
- * Roles: owner (paymentStatus + orderStatus), vendor (orderStatus only)
+ *
+ * - Updates order status
+ * - Auto-creates Delhivery shipment when status = "shipped"
+ *
+ * Roles:
+ * - owner: can update anything
+ * - vendor: can update orderStatus only
  */
 router.patch(
   "/:id/status",
